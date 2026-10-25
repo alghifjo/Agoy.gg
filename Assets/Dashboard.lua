@@ -1,293 +1,106 @@
-local Players = game:GetService("Players")
-local UserInputService = game:GetService("UserInputService")
-
+-- Agoys Script / Dashboard.lua
 local Dashboard = {}
+local currentWindow
 
-local function guiParent()
-    if gethui then
-        return gethui()
-    end
-    local ok, core = pcall(function()
-        return game:GetService("CoreGui")
+local function toggle(C, page, title, description, path)
+    return C.Toggle(page, title, description, Dashboard.Config.Get(path), function(value)
+        Dashboard.Config.Set(path, value)
     end)
-    if ok and core then
-        return core
-    end
-    return Players.LocalPlayer:WaitForChild("PlayerGui")
 end
 
-function Dashboard.Mount(config, theme, components)
-    local T, W, Th = theme.T, theme.W, theme
-    local existing = guiParent():FindFirstChild("AgoysDashboard")
-    if existing then
-        existing:Destroy()
-    end
-
-    local gui = Instance.new("ScreenGui")
-    gui.Name = "AgoysDashboard"
-    gui.ResetOnSpawn = false
-    gui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
-    gui.IgnoreGuiInset = true
-    gui.Parent = guiParent()
-
-    local window = Instance.new("Frame")
-    window.Name = "Window"
-    window.BackgroundColor3 = T.Background
-    window.BorderSizePixel = 0
-    window.Size = UDim2.fromOffset(W.Width, W.Height)
-    window.Position = UDim2.new(0.5, -W.Width / 2, 0.5, -W.Height / 2)
-    window.Parent = gui
-    Th.Corner(window, W.WindowRadius)
-    Th.Stroke(window)
-
-    local sidebar = Instance.new("Frame")
-    sidebar.BackgroundColor3 = T.Sidebar
-    sidebar.BorderSizePixel = 0
-    sidebar.Size = UDim2.new(0, W.SidebarWidth, 1, 0)
-    sidebar.Parent = window
-    Th.Corner(sidebar, W.WindowRadius)
-    local clip = Instance.new("Frame")
-    clip.BackgroundColor3 = T.Sidebar
-    clip.BorderSizePixel = 0
-    clip.Position = UDim2.new(1, -16, 0, 0)
-    clip.Size = UDim2.new(0, 16, 1, 0)
-    clip.Parent = sidebar
-
-    local brand = Instance.new("Frame")
-    brand.BackgroundTransparency = 1
-    brand.Size = UDim2.new(1, 0, 0, W.HeaderHeight)
-    brand.Parent = sidebar
-    Th.Pad(brand, 18, 20, 0, 20)
-    Th.Label(brand, { Text = config.Meta.Brand, Font = T.FontBold, Size = 16, Height = 20, Color = T.Text })
-    Th.Label(brand, {
-        Text = config.Meta.Product,
-        Size = 12,
-        Color = T.TextMuted,
-        Height = 16,
-        Pos = UDim2.new(0, 0, 0, 22),
-        Rect = UDim2.new(1, 0, 0, 16),
-    })
-
-    local nav = Instance.new("Frame")
-    nav.BackgroundTransparency = 1
-    nav.Position = UDim2.new(0, 12, 0, W.HeaderHeight + 8)
-    nav.Size = UDim2.new(1, -24, 1, -(W.HeaderHeight + 48))
-    nav.Parent = sidebar
-    local navList = Instance.new("UIListLayout")
-    navList.Padding = UDim.new(0, 4)
-    navList.SortOrder = Enum.SortOrder.LayoutOrder
-    navList.Parent = nav
-
-    Th.Label(sidebar, {
-        Text = "v" .. config.Meta.Version .. "  ·  " .. config.Meta.Game,
-        Size = 11,
-        Color = T.TextMuted,
-        Height = 16,
-        Pos = UDim2.new(0, 20, 1, -28),
-        Rect = UDim2.new(1, -40, 0, 16),
-    })
-
-    local main = Instance.new("Frame")
-    main.BackgroundTransparency = 1
-    main.Position = UDim2.new(0, W.SidebarWidth, 0, 0)
-    main.Size = UDim2.new(1, -W.SidebarWidth, 1, 0)
-    main.Parent = window
-
-    local header = Instance.new("Frame")
-    header.BackgroundTransparency = 1
-    header.Size = UDim2.new(1, 0, 0, W.HeaderHeight)
-    header.Parent = main
-    Th.Pad(header, 16, 20, 8, 24)
-
-    local title = Th.Label(header, { Text = "", Font = T.FontMedium, Size = 18, Height = 22, Pos = UDim2.new(0, 0, 0, 0), Rect = UDim2.new(1, -52, 0, 22) })
-    local subtitle = Th.Label(header, { Text = "", Size = 12, Color = T.TextMuted, Height = 16, Pos = UDim2.new(0, 0, 0, 24), Rect = UDim2.new(1, -52, 0, 16) })
-
-    local close = Instance.new("TextButton")
-    close.AutoButtonColor = false
-    close.Text = "×"
-    close.Font = T.Font
-    close.TextSize = 18
-    close.TextColor3 = T.TextMuted
-    close.BackgroundColor3 = T.Surface
-    close.BorderSizePixel = 0
-    close.Size = UDim2.fromOffset(W.CloseSize, W.CloseSize)
-    close.Position = UDim2.new(1, -28, 0, 2)
-    close.Parent = header
-    Th.Corner(close, 8)
-    close.MouseButton1Click:Connect(function()
-        gui.Enabled = false
+local function slider(C, page, title, description, path, minimum, maximum, decimals)
+    return C.Slider(page, title, description, minimum, maximum, Dashboard.Config.Get(path), decimals, function(value)
+        Dashboard.Config.Set(path, value)
     end)
+end
 
-    local body = Instance.new("ScrollingFrame")
-    body.BackgroundTransparency = 1
-    body.BorderSizePixel = 0
-    body.Position = UDim2.new(0, 0, 0, W.HeaderHeight)
-    body.Size = UDim2.new(1, 0, 1, -W.HeaderHeight)
-    body.CanvasSize = UDim2.new(0, 0, 0, 0)
-    body.AutomaticCanvasSize = Enum.AutomaticSize.Y
-    body.ScrollBarThickness = 4
-    body.ScrollBarImageColor3 = T.Border
-    body.ScrollingDirection = Enum.ScrollingDirection.Y
-    body.Parent = main
-    Th.Pad(body, 8, W.ContentPadding, 24, W.ContentPadding)
+local function dropdown(C, page, title, description, path, values)
+    return C.Dropdown(page, title, description, values, Dashboard.Config.Get(path), function(value)
+        Dashboard.Config.Set(path, value)
+    end)
+end
 
-    local pages = {}
-    local tabButtons = {}
-    local activeTab = config.Settings.DefaultTab or "combat"
+local function textbox(C, page, title, description, path, placeholder)
+    return C.TextBox(page, title, description, Dashboard.Config.Get(path), placeholder, function(value)
+        Dashboard.Config.Set(path, value)
+    end)
+end
 
-    local function sectionVisible(section)
-        local rule = section.VisibleWhen
-        if not rule then
-            return true
-        end
-        return config.Get(rule.Path) == rule.Equals
-    end
+function Dashboard.Mount(modules)
+    if currentWindow then currentWindow.Destroy(); currentWindow = nil end
+    local C, Config = modules.Components, modules.Config
+    assert(C and Config, "Dashboard membutuhkan Components dan Config")
+    Dashboard.Config = Config
+    C.Init(modules.Theme)
+    local window = C.CreateWindow({ Title = "Agoys Script", Subtitle = "Blade Ball  /  Control Center" })
+    currentWindow = window
 
-    for _, tab in ipairs(config.UI.Tabs) do
-        local page = Instance.new("Frame")
-        page.Name = tab.Id
-        page.BackgroundTransparency = 1
-        page.Visible = false
-        page.Size = UDim2.new(1, 0, 0, 0)
-        page.AutomaticSize = Enum.AutomaticSize.Y
-        page.Parent = body
-        local pageList = Instance.new("UIListLayout")
-        pageList.Padding = UDim.new(0, W.SectionGap)
-        pageList.SortOrder = Enum.SortOrder.LayoutOrder
-        pageList.Parent = page
+    local gameplay = window.AddTab("Gameplay", 1)
+    C.Section(gameplay, "Auto Parry")
+    toggle(C, gameplay, "Aktifkan Auto Parry", "Parry berdasarkan estimasi waktu tiba bola", "AutoParry.Enabled")
+    toggle(C, gameplay, "Prediksi adaptif", "Kompensasi ping dan kecepatan bola secara dinamis", "AutoParry.Adaptive")
+    dropdown(C, gameplay, "Metode input", "Gunakan Key bila Mouse tidak kompatibel", "AutoParry.InputMode", { "Key", "Mouse" })
+    slider(C, gameplay, "Reaksi dasar", "Ambang prediksi awal dalam detik", "AutoParry.Reaction", 0.04, 0.25, 3)
+    slider(C, gameplay, "Cooldown", "Jeda minimum antar parry", "AutoParry.Cooldown", 0.12, 0.60, 2)
+    slider(C, gameplay, "Jarak maksimum", "Batas jarak deteksi bola", "AutoParry.MaxDistance", 25, 120, 0)
+    slider(C, gameplay, "Faktor ping", "Besar kompensasi latensi jaringan", "AutoParry.PingFactor", 0, 1.5, 2)
 
-        local catalog = config.Catalog[tab.Id]
-        local sectionFrames = {}
-        if catalog then
-            for _, section in ipairs(catalog.Sections) do
-                local card = components.Card(page)
-                components.SectionHead(card, section.Title, section.Description)
-                for _, ctrl in ipairs(section.Controls) do
-                    components.Control(card, ctrl)
-                end
-                sectionFrames[#sectionFrames + 1] = { Frame = card, Section = section }
-            end
-        end
-        pages[tab.Id] = { Frame = page, Catalog = catalog, Sections = sectionFrames, Tab = tab }
+    local curve = window.AddTab("Curve", 2)
+    C.Section(curve, "Kontrol arah")
+    toggle(C, curve, "Aktifkan Curve", "Hitung dan kirim arah melalui adapter remote", "Curve.Enabled")
+    dropdown(C, curve, "Mode", "Auto saat bola mendekat; Manual dengan tombol C", "Curve.Mode", { "Auto", "Manual" })
+    dropdown(C, curve, "Target", "Pilih pemain berdasarkan jarak dari bola", "Curve.Target", { "Closest", "Furthest" })
+    dropdown(C, curve, "Arah manual", "Dipakai saat mode Manual", "Curve.ManualDirection", { "Atas", "Bawah", "Kiri", "Kanan" })
+    C.Section(curve, "Variasi pantulan acak")
+    toggle(C, curve, "Atas", "Sertakan bias arah ke atas", "Curve.Directions.Atas")
+    toggle(C, curve, "Bawah", "Sertakan bias arah ke bawah", "Curve.Directions.Bawah")
+    toggle(C, curve, "Kiri", "Sertakan rotasi arah ke kiri", "Curve.Directions.Kiri")
+    toggle(C, curve, "Kanan", "Sertakan rotasi arah ke kanan", "Curve.Directions.Kanan")
+    C.Section(curve, "Doting")
+    toggle(C, curve, "Mode Doting", "Dorongan lurus cepat tanpa variasi pantulan", "Curve.Doting")
+    slider(C, curve, "Kekuatan Curve", "Magnitudo untuk mode argumen Vector", "Curve.Strength", 5, 80, 0)
+    slider(C, curve, "Kekuatan Doting", "Magnitudo dorongan lurus", "Curve.DotingStrength", 10, 120, 0)
+    C.Section(curve, "Adapter game")
+    textbox(C, curve, "RemotePath", "Kosongkan bila remote game belum diketahui", "Curve.RemotePath", "Remotes.Curve")
+    dropdown(C, curve, "Format argumen", "Sesuaikan dengan kontrak remote game", "Curve.RemoteArgumentMode", { "DirectionTarget", "Direction", "Vector" })
 
-        local btn = Instance.new("TextButton")
-        btn.AutoButtonColor = false
-        btn.Text = ""
-        btn.BackgroundColor3 = T.Sidebar
-        btn.BorderSizePixel = 0
-        btn.Size = UDim2.new(1, 0, 0, W.NavItemHeight)
-        btn.Parent = nav
-        Th.Corner(btn, 8)
-
-        local accent = Instance.new("Frame")
-        accent.Name = "Accent"
-        accent.BorderSizePixel = 0
-        accent.BackgroundColor3 = T.Accent
-        accent.Size = UDim2.new(0, 2, 0, 20)
-        accent.Position = UDim2.new(0, 8, 0.5, 0)
-        accent.AnchorPoint = Vector2.new(0, 0.5)
-        accent.Visible = false
-        accent.Parent = btn
-        Th.Corner(accent, 1)
-
-        Th.Label(btn, {
-            Text = tab.Title,
-            Font = T.FontMedium,
-            Size = 13,
-            Height = 18,
-            Pos = UDim2.new(0, 22, 0, 10),
-            Rect = UDim2.new(1, -28, 0, 18),
-        })
-        Th.Label(btn, {
-            Text = tab.Caption,
-            Size = 11,
-            Color = T.TextMuted,
-            Height = 14,
-            Pos = UDim2.new(0, 22, 0, 28),
-            Rect = UDim2.new(1, -28, 0, 14),
-        })
-
-        btn.MouseButton1Click:Connect(function()
-            Dashboard.ShowTab(tab.Id)
-        end)
-        tabButtons[tab.Id] = btn
-    end
-
-    local function refreshVisibility()
-        local page = pages[activeTab]
-        if not page then
-            return
-        end
-        for _, item in ipairs(page.Sections) do
-            item.Frame.Visible = sectionVisible(item.Section)
-        end
-    end
-
-    function Dashboard.ShowTab(id)
-        activeTab = id
-        if config.Settings.RememberTab then
-            config.Set("Settings.DefaultTab", id)
-        end
-        for tabId, page in pairs(pages) do
-            page.Frame.Visible = tabId == id
-        end
-        for tabId, btn in pairs(tabButtons) do
-            local on = tabId == id
-            btn.BackgroundColor3 = on and T.AccentSoft or T.Sidebar
-            local mark = btn:FindFirstChild("Accent")
-            if mark then
-                mark.Visible = on
-            end
-        end
-        local page = pages[id]
-        if page and page.Catalog then
-            title.Text = page.Catalog.Title
-            subtitle.Text = page.Catalog.Description
-        end
-        refreshVisibility()
-        body.CanvasPosition = Vector2.new(0, 0)
-    end
-
-    config.Watch("Curve.Mode", function()
-        if activeTab == "curve" then
-            refreshVisibility()
+    local visual = window.AddTab("Visual", 3)
+    C.Section(visual, "Sword swap")
+    toggle(C, visual, "Aktifkan sword swap", "Terapkan aset pada Tool yang sedang digunakan", "Visual.SwordSwap")
+    textbox(C, visual, "MeshID", "Dapat berupa rbxassetid:// atau URL aset", "Visual.MeshID", "rbxassetid://...")
+    textbox(C, visual, "TextureID", "Tekan Enter atau klik di luar untuk menerapkan", "Visual.TextureID", "rbxassetid://...")
+    C.Section(visual, "Partikel")
+    toggle(C, visual, "Warna partikel kustom", "Mengganti ColorSequence ParticleEmitter", "Visual.ParticleColor")
+    C.TextBox(visual, "Warna RGB", "Format: merah, hijau, biru (0–255)", "96, 165, 250", "96, 165, 250", function(value)
+        local r, g, b = string.match(value, "(%d+)%s*,%s*(%d+)%s*,%s*(%d+)")
+        if r then
+            Config.Set("Visual.ColorR", math.clamp(tonumber(r), 0, 255))
+            Config.Set("Visual.ColorG", math.clamp(tonumber(g), 0, 255))
+            Config.Set("Visual.ColorB", math.clamp(tonumber(b), 0, 255))
         end
     end)
+    C.Section(visual, "Shader V-RTX")
+    toggle(C, visual, "Aktifkan V-RTX", "ColorCorrection, Bloom, dan SunRays", "Visual.VRTX")
+    slider(C, visual, "Contrast", "Kekuatan kontras pencahayaan", "Visual.Contrast", -0.2, 0.5, 2)
+    slider(C, visual, "Saturation", "Intensitas warna tampilan", "Visual.Saturation", -0.5, 0.5, 2)
+    slider(C, visual, "Bloom", "Intensitas cahaya lembut", "Visual.BloomIntensity", 0, 1.5, 2)
+    slider(C, visual, "Sun rays", "Intensitas pancaran cahaya", "Visual.SunRaysIntensity", 0, 0.4, 2)
 
-    local dragging, dragStart, startPos
-    header.InputBegan:Connect(function(input)
-        if input.UserInputType == Enum.UserInputType.MouseButton1 then
-            dragging = true
-            dragStart = input.Position
-            startPos = window.Position
-        end
+    local settings = window.AddTab("Settings", 4)
+    C.Section(settings, "Antarmuka")
+    C.TextBox(settings, "Tombol sembunyikan UI", "Default: RightShift; gunakan nama Enum.KeyCode", Config.Get("UI.ToggleKey"), "RightShift", function(value)
+        if Enum.KeyCode[value] then Config.Set("UI.ToggleKey", value) end
     end)
-    header.InputEnded:Connect(function(input)
-        if input.UserInputType == Enum.UserInputType.MouseButton1 then
-            dragging = false
-        end
-    end)
-    UserInputService.InputChanged:Connect(function(input)
-        if dragging and input.UserInputType == Enum.UserInputType.MouseMovement then
-            local d = input.Position - dragStart
-            window.Position = UDim2.new(startPos.X.Scale, startPos.X.Offset + d.X, startPos.Y.Scale, startPos.Y.Offset + d.Y)
-        end
-    end)
+    C.Section(settings, "Lifecycle")
+    C.Button(settings, "Unload Agoys Script", "Hentikan loop, putuskan koneksi, dan pulihkan visual", "Unload", function()
+        if modules.Main then modules.Main.Stop() end
+    end, true)
 
-    UserInputService.InputBegan:Connect(function(input, gp)
-        if gp then
-            return
-        end
-        if input.KeyCode == config.Settings.ToggleKey then
-            gui.Enabled = not gui.Enabled
-        end
-    end)
+    return window
+end
 
-    Dashboard.Gui = gui
-    Dashboard.Window = window
-    Dashboard.ShowTab(activeTab)
-    gui.Enabled = config.Settings.OpenOnInject
-    return Dashboard
+function Dashboard.Destroy()
+    if currentWindow then currentWindow.Destroy(); currentWindow = nil end
 end
 
 return Dashboard

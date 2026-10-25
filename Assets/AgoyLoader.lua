@@ -1,125 +1,67 @@
---[[
-    Agoys Script — AgoyLoader
-    Seluruh file lokal disimpan langsung di dalam folder "assets"
-]]
-
-local ROOT_FOLDER = "assets"
-local BASE_URL = "https://raw.githubusercontent.com/alghifjo/Agoy.gg/main/"
-
--- 1. Mengambil file langsung dari root repositori GitHub
-local function safeHttp(path)
-    local url = BASE_URL .. path
-
-    local success, response = pcall(function()
-        return game:HttpGet(url)
-    end)
-
-    if not success or type(response) ~= "string" or response == "" then
-        warn("[AgoyLoader] Gagal mengambil file dari server: " .. path)
-        return nil
-    end
-
-    if response == "404: Not Found" then
-        warn("[AgoyLoader] File tidak ditemukan di server: " .. path)
-        return nil
-    end
-
-    return response
-end
-
--- 2. Membuat satu folder utama lokal
-if makefolder and isfolder then
-    if not isfolder(ROOT_FOLDER) then
-        local success, err = pcall(makefolder, ROOT_FOLDER)
-
-        if not success then
-            warn("[AgoyLoader] Gagal membuat folder assets: " .. tostring(err))
-        end
-    end
-else
-    warn("[AgoyLoader] Executor tidak menyediakan makefolder/isfolder.")
-end
-
--- 3. Menyimpan file langsung ke assets/namafile.lua
-local function saveToAssets(fileName, content)
-    if not writefile then
-        return
-    end
-
-    local filePath = ROOT_FOLDER .. "/" .. fileName
-
-    local success, err = pcall(function()
-        writefile(filePath, content)
-    end)
-
-    if not success then
-        warn("[AgoyLoader] Gagal menyimpan " .. filePath .. ": " .. tostring(err))
-    end
-end
-
--- 4. Daftar file inti
--- Semua file berada di root GitHub dan disimpan langsung di folder assets
-local filesToSync = {
-    "Config.lua",
-    "Theme.lua",
-    "Components.lua",
-    "Dashboard.lua",
-    "Visual.lua",
-    "AutoParry.lua",
-    "Curve.lua",
+-- Agoys Script / AgoyLoader.lua
+-- Ganti BASE_URL, atau set getgenv().AgoysBaseURL sebelum menjalankan loader.
+local BASE_URL = getgenv().AgoysBaseURL or "https://raw.githubusercontent.com/alghifjo/Agoy.gg/main/assets"
+local FOLDER = "assets"
+local FILES = {
+    "Config.lua", "Theme.lua", "Components.lua", "Dashboard.lua", "Main.lua",
+    "AutoParry.lua", "Curve.lua", "Visual.lua", "AgoyLoader.lua",
 }
+local MODULE_ORDER = { "Config", "Theme", "Components", "AutoParry", "Curve", "Visual", "Dashboard", "Main" }
 
-local loadedModules = {}
+assert(type(game.HttpGet) == "function", "Executor tidak menyediakan game:HttpGet")
+assert(type(writefile) == "function" and type(readfile) == "function", "Executor tidak menyediakan writefile/readfile")
+assert(type(makefolder) == "function" and type(isfolder) == "function", "Executor tidak menyediakan fungsi folder")
 
--- 5. Sinkronisasi dan eksekusi modul
-for _, fileName in ipairs(filesToSync) do
-    -- Contoh URL:
-    -- https://raw.githubusercontent.com/alghifjo/Agoy.gg/main/Config.lua
-    local content = safeHttp(fileName)
+BASE_URL = string.gsub(BASE_URL, "/+$", "")
+if getgenv().AgoysScript and type(getgenv().AgoysScript.Stop) == "function" then
+    pcall(getgenv().AgoysScript.Stop)
+    task.wait(0.1)
+end
+if not isfolder(FOLDER) then makefolder(FOLDER) end
 
-    if content then
-        -- Contoh jalur lokal: assets/Config.lua
-        saveToAssets(fileName, content)
-
-        local chunk, compileError = loadstring(content, "@" .. fileName)
-
-        if chunk then
-            local success, result = pcall(chunk)
-
-            if success then
-                local moduleName = fileName:gsub("%.lua$", "")
-                loadedModules[moduleName] = result
-            else
-                warn(
-                    "[AgoyLoader] Error saat eksekusi modul "
-                    .. fileName .. ": " .. tostring(result)
-                )
+local function download(fileName)
+    local url = BASE_URL .. "/" .. fileName
+    local lastError = "unknown error"
+    for attempt = 1, 3 do
+        local ok, body = pcall(function()
+            return game:HttpGet(url .. "?agoy=" .. tostring(math.floor(tick() * 1000)))
+        end)
+        if ok and type(body) == "string" and #body > 20 then
+            local chunk, compileError = loadstring(body, "@" .. fileName)
+            if chunk then
+                local path = FOLDER .. "/" .. fileName
+                local wrote, writeError = pcall(writefile, path, body)
+                assert(wrote, "Gagal menyimpan " .. path .. ": " .. tostring(writeError))
+                return path
             end
+            lastError = "sintaks tidak valid / respons bukan Lua: " .. tostring(compileError)
         else
-            warn(
-                "[AgoyLoader] Gagal compile "
-                .. fileName .. ": " .. tostring(compileError)
-            )
+            lastError = tostring(body)
         end
+        task.wait(0.35 * attempt)
     end
+    error("Gagal mengunduh " .. fileName .. " setelah 3 percobaan: " .. lastError, 0)
 end
 
--- 6. Inisialisasi Dashboard
-local Config = loadedModules["Config"]
-local Theme = loadedModules["Theme"]
-local Components = loadedModules["Components"]
-local Dashboard = loadedModules["Dashboard"]
-
-if Dashboard and type(Dashboard.Mount) == "function" then
-    local success, err = pcall(function()
-        Dashboard.Mount(Config, Theme, Components)
-    end)
-
-    if not success then
-        warn("[AgoyLoader] Gagal merender Dashboard: " .. tostring(err))
+local loaded = {}
+local ok, loadError = pcall(function()
+    for _, fileName in ipairs(FILES) do download(fileName) end
+    for _, moduleName in ipairs(MODULE_ORDER) do
+        local path = FOLDER .. "/" .. moduleName .. ".lua"
+        local source = readfile(path)
+        assert(type(source) == "string" and #source > 0, "File kosong: " .. path)
+        local chunk, compileError = loadstring(source, "@" .. path)
+        assert(chunk, "Compile error " .. path .. ": " .. tostring(compileError))
+        local result = chunk()
+        assert(type(result) == "table", path .. " harus mengembalikan table, bukan nil")
+        loaded[moduleName] = result
     end
-else
-    warn("[AgoyLoader] Modul Dashboard atau fungsi Mount tidak ditemukan.")
-end
+    assert(type(loaded.Main.Start) == "function", "Main.Start tidak ditemukan")
+    loaded.Main.Start(loaded)
+end)
 
-return loadedModules
+if not ok then
+    if loaded.Main and type(loaded.Main.Stop) == "function" then pcall(loaded.Main.Stop) end
+    warn("[Agoys Loader] " .. tostring(loadError))
+    error(loadError, 0)
+end

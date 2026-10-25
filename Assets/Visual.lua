@@ -1,96 +1,143 @@
---[[
-    Sword swap + Shader V-RTX (ColorCorrection, Bloom, SunRays).
-]]
-
-local Lighting = game:GetService("Lighting")
+-- Agoys Script / Visual.lua
 local Players = game:GetService("Players")
+local Lighting = game:GetService("Lighting")
 
-local Visuals = {}
+local Visual = {}
+local player = Players.LocalPlayer
+local Config
+local connections = {}
+local originals = setmetatable({}, { __mode = "k" })
+local unbind
 
-local TAG = "AgoysVRTX"
-local fx = {}
-
-local function ensure(className, name)
-    local existing = Lighting:FindFirstChild(name)
-    if existing and existing:IsA(className) then
-        return existing
+local function assign(instance, key, value)
+    local ok = pcall(function() instance[key] = value end)
+    if not ok and typeof(sethiddenproperty) == "function" then
+        pcall(sethiddenproperty, instance, key, value)
     end
-    if existing then
-        existing:Destroy()
-    end
-    local inst = Instance.new(className)
-    inst.Name = name
-    inst.Parent = Lighting
-    return inst
 end
 
-local function applyShader(config)
-    local sh = config.Visuals.ShaderVRTX
-    if not sh.Enabled then
-        for _, inst in pairs(fx) do
-            if inst then
-                inst.Enabled = false
-            end
+local function remember(instance)
+    if originals[instance] then return end
+    local data = {}
+    if instance:IsA("SpecialMesh") then
+        data.MeshId, data.TextureId = instance.MeshId, instance.TextureId
+    elseif instance:IsA("MeshPart") then
+        data.MeshID, data.TextureID = instance.MeshID, instance.TextureID
+    elseif instance:IsA("ParticleEmitter") then
+        data.Color = instance.Color
+    end
+    originals[instance] = data
+end
+
+local function applyToDescendant(instance)
+    local meshId = Config.Get("Visual.MeshID")
+    local textureId = Config.Get("Visual.TextureID")
+    if Config.Get("Visual.SwordSwap") then
+        if instance:IsA("SpecialMesh") then
+            remember(instance)
+            if meshId ~= "" then assign(instance, "MeshId", meshId) end
+            if textureId ~= "" then assign(instance, "TextureId", textureId) end
+        elseif instance:IsA("MeshPart") then
+            remember(instance)
+            if meshId ~= "" then assign(instance, "MeshID", meshId) end
+            if textureId ~= "" then assign(instance, "TextureID", textureId) end
         end
-        return
     end
-
-    fx.cc = fx.cc or ensure("ColorCorrectionEffect", TAG .. "_CC")
-    fx.bloom = fx.bloom or ensure("BloomEffect", TAG .. "_Bloom")
-    fx.sun = fx.sun or ensure("SunRaysEffect", TAG .. "_Sun")
-
-    local cc = sh.ColorCorrection
-    fx.cc.Enabled = true
-    fx.cc.Brightness = cc.Brightness
-    fx.cc.Contrast = cc.Contrast
-    fx.cc.Saturation = cc.Saturation
-    fx.cc.TintColor = cc.TintColor
-
-    fx.bloom.Enabled = true
-    fx.bloom.Intensity = sh.Bloom.Intensity
-    fx.bloom.Size = sh.Bloom.Size
-    fx.bloom.Threshold = sh.Bloom.Threshold
-
-    fx.sun.Enabled = true
-    fx.sun.Intensity = sh.SunRays.Intensity
-    fx.sun.Spread = sh.SunRays.Spread
+    if Config.Get("Visual.ParticleColor") and instance:IsA("ParticleEmitter") then
+        remember(instance)
+        local color = Color3.fromRGB(Config.Get("Visual.ColorR"), Config.Get("Visual.ColorG"), Config.Get("Visual.ColorB"))
+        instance.Color = ColorSequence.new(color)
+    end
 end
 
-local function applySword(config)
-    local swap = config.Visuals.SwordSwap
-    local player = Players.LocalPlayer
-    if not player or not player.Character then
-        return
-    end
-    for _, inst in ipairs(player.Character:GetDescendants()) do
-        if inst:IsA("SpecialMesh") and swap.Enabled then
-            if swap.MeshId ~= "" and swap.MeshId ~= "rbxassetid://0" then
-                inst.MeshId = swap.MeshId
-            end
-            if swap.TextureId ~= "" and swap.TextureId ~= "rbxassetid://0" then
-                inst.TextureId = swap.TextureId
-            end
-        elseif inst:IsA("ParticleEmitter") and swap.Enabled then
-            inst.Color = ColorSequence.new(swap.ParticleColor)
-            inst.Rate = swap.ParticleRate
+local function applyCharacter(character)
+    if not character then return end
+    for _, tool in ipairs(character:GetChildren()) do
+        if tool:IsA("Tool") then
+            for _, descendant in ipairs(tool:GetDescendants()) do applyToDescendant(descendant) end
         end
     end
 end
 
-function Visuals.Refresh(config)
-    applyShader(config)
-    applySword(config)
+local function restore()
+    for instance, data in pairs(originals) do
+        if instance.Parent then
+            for key, value in pairs(data) do assign(instance, key, value) end
+        end
+    end
+    table.clear(originals)
 end
 
-function Visuals.Start(config)
-    Visuals._config = config
-    Visuals.Refresh(config)
-    config.Watch("*", function(_, path)
-        if string.sub(path, 1, 8) == "Visuals." then
-            Visuals.Refresh(config)
-        end
+local function removeVRTX()
+    for _, name in ipairs({ "Agoys_Color", "Agoys_Bloom", "Agoys_Sun" }) do
+        local effect = Lighting:FindFirstChild(name)
+        if effect then effect:Destroy() end
+    end
+end
+
+local function applyVRTX()
+    removeVRTX()
+    if not Config.Get("Visual.VRTX") then return end
+    local correction = Instance.new("ColorCorrectionEffect")
+    correction.Name = "Agoys_Color"
+    correction.Brightness = Config.Get("Visual.Brightness")
+    correction.Contrast = Config.Get("Visual.Contrast")
+    correction.Saturation = Config.Get("Visual.Saturation")
+    correction.TintColor = Color3.fromRGB(246, 249, 255)
+    correction.Parent = Lighting
+
+    local bloom = Instance.new("BloomEffect")
+    bloom.Name = "Agoys_Bloom"
+    bloom.Intensity = Config.Get("Visual.BloomIntensity")
+    bloom.Size = Config.Get("Visual.BloomSize")
+    bloom.Threshold = Config.Get("Visual.BloomThreshold")
+    bloom.Parent = Lighting
+
+    local rays = Instance.new("SunRaysEffect")
+    rays.Name = "Agoys_Sun"
+    rays.Intensity = Config.Get("Visual.SunRaysIntensity")
+    rays.Spread = Config.Get("Visual.SunRaysSpread")
+    rays.Parent = Lighting
+end
+
+function Visual.Refresh()
+    restore()
+    applyVRTX()
+    applyCharacter(player.Character)
+end
+
+function Visual.Start(config)
+    Config = config
+    local function onCharacter(character)
+        applyCharacter(character)
+        table.insert(connections, character.DescendantAdded:Connect(function(instance)
+            local ancestor = instance
+            while ancestor and ancestor ~= character do
+                if ancestor:IsA("Tool") then
+                    task.defer(applyToDescendant, instance)
+                    break
+                end
+                ancestor = ancestor.Parent
+            end
+        end))
+    end
+    if player.Character then onCharacter(player.Character) end
+    table.insert(connections, player.CharacterAdded:Connect(function(character)
+        task.wait(0.4)
+        onCharacter(character)
+    end))
+    unbind = Config.Bind(function(path)
+        if string.sub(path, 1, 7) == "Visual." then Visual.Refresh() end
     end)
-    return Visuals
+    Visual.Refresh()
 end
 
-return Visuals
+function Visual.Stop()
+    for _, connection in ipairs(connections) do connection:Disconnect() end
+    table.clear(connections)
+    if unbind then unbind(); unbind = nil end
+    restore()
+    removeVRTX()
+end
+
+return Visual

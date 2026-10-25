@@ -1,32 +1,31 @@
--[[
-    Agoys Script — AgoyLoader (Updated Flat Path Sync)
+--[[
+    Agoys Script — AgoyLoader (Robust & Secure Production Version)
 ]]
 
 local ROOT_FOLDER = "Agoy.gg"
 local BASE_URL = "https://raw.githubusercontent.com/alghifjo/Agoy.gg/main/"
 
-local function ensureFolder(path)
-    if not isfolder(path) then
-        makefolder(path)
-    end
-end
-
-local function downloadFile(filePath)
-    local url = BASE_URL .. filePath
-    local success, content = pcall(function()
+-- 1. Validasi Fungsi Eksekutor
+local function safeHttp(path)
+    local url = BASE_URL .. path
+    local success, response = pcall(function()
         return game:HttpGet(url)
     end)
-    
-    if success and content then
-        writefile(ROOT_FOLDER .. "/" .. filePath, content)
+    if not success or not response or response == "404: Not Found" then
+        warn("[AgoyLoader] Gagal mengambil file dari server: " .. path)
+        return nil
+    end
+    return response
+end
+
+-- 2. Inisialisasi Workspace Lokal
+if makefolder and isfolder then
+    if not isfolder(ROOT_FOLDER) then
+        pcall(function() makefolder(ROOT_FOLDER) end)
     end
 end
 
--- 1. Inisialisasi folder workspace
-ensureFolder(ROOT_FOLDER)
-ensureFolder(ROOT_FOLDER .. "/Modules")
-
--- 2. Daftar file sesuai struktur repository GitHub saat ini
+-- 3. Sinkronisasi File Inti
 local filesToSync = {
     "Config.lua",
     "Theme.lua",
@@ -37,39 +36,48 @@ local filesToSync = {
     "Curve.lua",
 }
 
-for _, file in ipairs(filesToSync) do
-    pcall(function()
-        downloadFile(file)
-    end)
-end
+local loadedModules = {}
 
--- 3. Fungsi loader lokal dengan fallback online
-local function loadLocal(path)
-    local fullPath = ROOT_FOLDER .. "/" .. path
-    if isfile and isfile(fullPath) then
-        local source = readfile(fullPath)
-        local chunk, err = loadstring(source, "@" .. path)
+for _, file in ipairs(filesToSync) do
+    local content = safeHttp(file)
+    if content then
+        -- Simpan ke cache lokal jika fungsi writefile tersedia
+        if writefile then
+            pcall(function()
+                writefile(ROOT_FOLDER .. "/" .. file, content)
+            end)
+        end
+        
+        -- Compile dan load chunk
+        local chunk, err = loadstring(content, "@" .. file)
         if chunk then
-            return chunk()
+            local ok, res = pcall(chunk)
+            if ok then
+                loadedModules[file:gsub("%.lua$", "")] = res
+            else
+                warn("[AgoyLoader] Error saat eksekusi modul " .. file .. ": " .. tostring(res))
+            end
+        else
+            warn("[AgoyLoader] Gagal compile " .. file .. ": " .. tostring(err))
         end
     end
-    return loadstring(game:HttpGet(BASE_URL .. path))()
 end
 
--- 4. Muat semua modul inti
-local Config = loadLocal("Config.lua")
-local Theme = loadLocal("Theme.lua")
-local Components = loadLocal("Components.lua")
-local Dashboard = loadLocal("Dashboard.lua")
+-- 4. Inisialisasi Tampilan Dashboard UI
+local Config = loadedModules["Config"]
+local Theme = loadedModules["Theme"]
+local Components = loadedModules["Components"]
+local Dashboard = loadedModules["Dashboard"]
 
--- 5. Eksekusi Mount Dashboard
-if Dashboard and Dashboard.Mount then
-    pcall(function()
+if Dashboard and type(Dashboard.Mount) == "function" then
+    local success, err = pcall(function()
         Dashboard.Mount(Config, Theme, Components)
     end)
+    if not success then
+        warn("[AgoyLoader] Gagal merender Dashboard: " .. tostring(err))
+    end
+else
+    warn("[AgoyLoader] Modul Dashboard atau fungsi Mount tidak ditemukan.")
 end
 
-return {
-    Config = Config,
-    Dashboard = Dashboard
-}
+return loadedModules

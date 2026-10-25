@@ -1,57 +1,58 @@
---[[
-    Agoys Script — Blade Ball (Solara)
-    Entry: jalankan file ini dari folder Agoy.gg.
-]]
+-- Agoys Script / Main.lua
+local RunService = game:GetService("RunService")
+local UserInputService = game:GetService("UserInputService")
 
-local function loadRel(rel)
-    if getgenv and getgenv().AgoysModules and getgenv().AgoysModules[rel] then
-        return getgenv().AgoysModules[rel]
+local Main = { Running = false }
+local modules
+local heartbeatConnection
+local inputConnection
+local window
+
+function Main.Start(loadedModules)
+    if Main.Running then Main.Stop() end
+    modules = loadedModules
+    for _, name in ipairs({ "Config", "Theme", "Components", "Dashboard", "AutoParry", "Curve", "Visual" }) do
+        assert(type(modules[name]) == "table", "Modul tidak valid: " .. name)
     end
-    if not readfile then
-        error("Executor tidak menyediakan readfile. Letakkan proyek di workspace Solara dan jalankan Main.lua.")
-    end
-    local candidates = { rel, rel:gsub("/", "\\"), "Agoy.gg/" .. rel, "Agoy.gg\\" .. rel:gsub("/", "\\") }
-    local source
-    for i = 1, #candidates do
-        local path = candidates[i]
-        if not isfile or isfile(path) then
-            local ok, data = pcall(readfile, path)
-            if ok and type(data) == "string" and #data > 0 then
-                source = data
-                break
-            end
+    Main.Running = true
+    modules.AutoParry.Start(modules.Config)
+    modules.Curve.Start(modules.Config)
+    modules.Visual.Start(modules.Config)
+    window = modules.Dashboard.Mount(modules)
+
+    heartbeatConnection = RunService.Heartbeat:Connect(function(deltaTime)
+        if not Main.Running then return end
+        local okParry, parryError = pcall(modules.AutoParry.Step, deltaTime)
+        if not okParry then warn("[Agoys AutoParry] " .. tostring(parryError)); Main.Running = false end
+        local okCurve, curveError = pcall(modules.Curve.Step, deltaTime)
+        if not okCurve then warn("[Agoys Curve] " .. tostring(curveError)) end
+    end)
+    inputConnection = UserInputService.InputBegan:Connect(function(input, processed)
+        if processed then return end
+        local configured = modules.Config.Get("UI.ToggleKey")
+        if Enum.KeyCode[configured] and input.KeyCode == Enum.KeyCode[configured] and window then
+            window.Toggle()
         end
-    end
-    if not source then
-        error("Tidak bisa membaca " .. rel)
-    end
-    local chunk, err = loadstring(source, "@" .. rel)
-    if not chunk then
-        error(err)
-    end
-    return chunk()
+    end)
+
+    getgenv().AgoysScript = { Stop = Main.Stop, Modules = modules, Version = "1.0.0" }
+    print("[Agoys] Dashboard berhasil dimuat. RightShift untuk show/hide.")
 end
 
-local Config = loadRel("Config.lua")
-local Theme = loadRel("src/UI/Theme.lua").Attach(Config)
-local Components = loadRel("src/UI/Components.lua").Attach(Config, Theme)
-local Dashboard = loadRel("src/UI/Dashboard.lua")
-local AutoParry = loadRel("src/Features/AutoParry.lua").Start(Config)
-local Curve = loadRel("src/Features/Curve.lua").Start(Config)
-local Visuals = loadRel("src/Features/Visuals.lua").Start(Config)
-
-Dashboard.Mount(Config, Theme, Components)
-
-local Agoy = {
-    Config = Config,
-    AutoParry = AutoParry,
-    Curve = Curve,
-    Visuals = Visuals,
-    Dashboard = Dashboard,
-}
-
-if getgenv then
-    getgenv().Agoy = Agoy
+function Main.Stop()
+    if not modules then return end
+    Main.Running = false
+    if heartbeatConnection then heartbeatConnection:Disconnect(); heartbeatConnection = nil end
+    if inputConnection then inputConnection:Disconnect(); inputConnection = nil end
+    pcall(function() modules.AutoParry.Stop() end)
+    pcall(function() modules.Curve.Stop() end)
+    pcall(function() modules.Visual.Stop() end)
+    pcall(function() modules.Dashboard.Destroy() end)
+    window = nil
+    if getgenv().AgoysScript and getgenv().AgoysScript.Modules == modules then
+        getgenv().AgoysScript = nil
+    end
+    modules = nil
 end
 
-return Agoy
+return Main

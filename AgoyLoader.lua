@@ -1,5 +1,5 @@
 local ROOT = "AegisBladeBall"
-local BASE_URL = getgenv().AEGIS_BASE_URL or ""
+local BASE_URL = getgenv().AEGIS_BASE_URL or "https://raw.githubusercontent.com/alghifjo/Agoy.gg/refs/heads/main/Assets/AgoyLoader.lua"
 local FILES = { "Config.lua", "Theme.lua", "Components.lua", "BallTracker.lua", "AutoParry.lua", "Dashboard.lua", "Main.lua" }
 
 assert(type(game.HttpGet) == "function", "game:HttpGet tidak tersedia")

@@ -1,5 +1,4 @@
 -- Agoys Script / AgoyLoader.lua
--- Ganti BASE_URL, atau set getgenv().AgoysBaseURL sebelum menjalankan loader.
 local BASE_URL = getgenv().AgoysBaseURL or "https://raw.githubusercontent.com/alghifjo/Agoy.gg/main/assets"
 local FOLDER = "assets"
 local FILES = {

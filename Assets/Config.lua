@@ -1,102 +1,82 @@
--- Agoys Script / Config.lua
-local Config = {}
+-- Aegis Blade Ball | Central configuration
+-- Semua nilai jarak memakai stud dan waktu memakai detik.
 
-Config.Values = {
-    AutoParry = {
-        Enabled = false,
-        Adaptive = true,
-        InputMode = "Key", -- Key | Mouse
-        KeyCode = "F",
-        Reaction = 0.115,
-        Cooldown = 0.24,
-        MinDistance = 3,
-        MaxDistance = 72,
-        PingFactor = 0.65,
-        SpeedFactor = 0.12,
-        MinPrediction = 0.045,
-        MaxPrediction = 0.58,
-        AssumeTargeted = true,
-    },
-    Curve = {
-        Enabled = false,
-        Mode = "Auto", -- Auto | Manual
-        Target = "Closest", -- Closest | Furthest
-        ManualKey = "C",
-        ManualDirection = "Atas",
-        Directions = { Atas = true, Bawah = true, Kiri = true, Kanan = true },
-        Strength = 24,
-        Range = 65,
-        Cooldown = 0.28,
-        Doting = false,
-        DotingStrength = 48,
-        -- Isi hanya jika Anda mengetahui remote game yang valid, mis. "Remotes.Curve".
-        -- Kosongkan agar modul hanya menghitung arah tanpa mengirim remote.
-        RemotePath = "",
-        RemoteArgumentMode = "DirectionTarget", -- DirectionTarget | Direction | Vector
-    },
-    Visual = {
-        SwordSwap = false,
-        MeshID = "",
-        TextureID = "",
-        ParticleColor = false,
-        ColorR = 96,
-        ColorG = 165,
-        ColorB = 250,
-        VRTX = false,
-        Brightness = 0.18,
-        Contrast = 0.12,
-        Saturation = -0.04,
-        BloomIntensity = 0.32,
-        BloomSize = 22,
-        BloomThreshold = 1.08,
-        SunRaysIntensity = 0.08,
-        SunRaysSpread = 0.82,
-    },
-    UI = {
-        ToggleKey = "RightShift",
-    },
+local Config = {
+	Product = {
+		Name = "AEGIS",
+		Subtitle = "Adaptive Parry Intelligence",
+		Version = "1.0.0",
+	},
+
+	Runtime = {
+		ToggleKey = Enum.KeyCode.RightControl,
+		MenuKey = Enum.KeyCode.RightShift,
+		MaxFrameDelta = 0.05,
+		BallScanInterval = 0.35,
+	},
+
+	Ball = {
+		ContainerNames = { "Balls", "Ball" },
+		RealBallAttribute = "realBall",
+		TargetAttributes = { "target", "Target", "TargetPlayer", "TargetName" },
+		RootRadius = 2.0,
+		TeleportDistance = 90,
+		VelocityBlend = 0.65,
+	},
+
+	Parry = {
+		Enabled = true,
+		Predictive = true,
+		CompensatePing = true,
+		HitboxRadius = 9.5,
+		EmergencyRadius = 7.0,
+		MaxPredictionReach = 6.0,
+		SpeedReachFactor = 0.006,
+		BaseTriggerWindow = 0.025,
+		MaxTriggerWindow = 0.105,
+		PingScale = 0.30,
+		MaxPingCompensation = 0.065,
+		MinimumInputInterval = 0.035,
+		InputMethod = "Auto", -- Auto | KeyF | Mouse | VirtualInput
+	},
+
+	Pull = {
+		Enabled = true,
+		DirectionChangeAngle = 38,
+		ReentryWindow = 1.10,
+		MinimumClosingSpeed = 8,
+	},
+
+	Fury = {
+		Enabled = true,
+		HoldSpeed = 3.0,
+		HoldDelay = 0.065,
+		SpikeAbsoluteSpeed = 115,
+		SpikeMultiplier = 2.15,
+		SpikeAcceleration = 900,
+		ReleaseMinimumSpeed = 28,
+	},
+
+	Dashboard = {
+		RefreshRate = 0.10,
+		Width = 720,
+		Height = 454,
+		MinScale = 0.72,
+		MaxScale = 1.0,
+	},
 }
 
-local listeners = {}
+function Config.GetPingSeconds()
+	local ok, value = pcall(function()
+		local stats = game:GetService("Stats")
+		local item = stats.Network.ServerStatsItem["Data Ping"]
+		return item:GetValue() / 1000
+	end)
 
-local function splitPath(path)
-    local result = {}
-    for part in string.gmatch(path, "[^.]+") do
-        table.insert(result, part)
-    end
-    return result
-end
-
-function Config.Get(path)
-    local node = Config.Values
-    for _, key in ipairs(splitPath(path)) do
-        if type(node) ~= "table" then return nil end
-        node = node[key]
-    end
-    return node
-end
-
-function Config.Set(path, value)
-    local parts = splitPath(path)
-    local node = Config.Values
-    for index = 1, #parts - 1 do
-        local key = parts[index]
-        if type(node[key]) ~= "table" then node[key] = {} end
-        node = node[key]
-    end
-    node[parts[#parts]] = value
-    for _, callback in ipairs(listeners) do
-        task.spawn(callback, path, value)
-    end
-    return value
-end
-
-function Config.Bind(callback)
-    table.insert(listeners, callback)
-    return function()
-        local index = table.find(listeners, callback)
-        if index then table.remove(listeners, index) end
-    end
+	if ok and type(value) == "number" and value >= 0 and value < 2 then
+		return value
+	end
+	return 0
 end
 
 return Config

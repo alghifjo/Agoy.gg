@@ -1,3 +1,52 @@
+==Agoy Loader===
+local Players = game:GetService("Players")
+local LocalPlayer = Players.LocalPlayer
+
+local oldNamecall
+oldNamecall = hookmetamethod(game, "__namecall", function(self, ...)
+    local method = getnamecallmethod()
+    if (method == "Kick" or method == "kick") and self == LocalPlayer then
+        warn("[Anti-Kick] Kick diblokir!")
+        return nil
+    end
+    return oldNamecall(self, ...)
+end)
+print("[Anti-Kick] Layer 1 (__namecall) aktif.")
+
+if hookfunction then
+    local ok, err = pcall(function()
+        hookfunction(LocalPlayer.Kick, function()
+            warn("[Anti-Kick][L2] Kick via hookfunction diblokir!")
+            return nil
+        end)
+    end)
+    if ok then
+        print("[Anti-Kick] Layer 2 (hookfunction Kick) aktif.")
+    else
+        warn("[Anti-Kick] Layer 2 gagal: " .. tostring(err))
+    end
+end
+
+if hookmetamethod and getrawmetatable then
+    local mt = getrawmetatable(game)
+    local oldIndex = mt.__index
+    setreadonly(mt, false)
+
+    mt.__index = newcclosure(function(self, key)
+        if self == LocalPlayer and (key == "Kick" or key == "kick") then
+            return function()
+                warn("[Anti-Kick][L3] Akses Kick diblokir via __index!")
+            end
+        end
+        return oldIndex(self, key)
+    end)
+
+    setreadonly(mt, true)
+    print("[Anti-Kick] Layer 3 (__index) aktif.")
+end
+
+print("[Anti-Kick] Advanced aktif - semua layer terpasang.")
+
 local ROOT = "AegisBladeBall"
 local BASE_URL = getgenv().AEGIS_BASE_URL or "https://raw.githubusercontent.com/alghifjo/Agoy.gg/refs/heads/main/Assets/AgoyLoader.lua"
 local FILES = { "Config.lua", "Theme.lua", "Components.lua", "BallTracker.lua", "AutoParry.lua", "Dashboard.lua", "Main.lua" }
